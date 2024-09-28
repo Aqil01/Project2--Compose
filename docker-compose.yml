@@ -1,0 +1,46 @@
+services:
+# Docker-in-docker service
+  dind:
+    image: docker:dind #using the official DinD image
+    container_name: dind
+    privileged: true #giving privileges to this container
+    user: root #running as root user
+    networks:
+      jenkins:
+        aliases:
+          - docker #setting network alias to 'docker'
+    environment:
+      DOCKER_TLS_CERTDIR: /certs #setting TLS cert directory
+    volumes:
+      - docker-certs-ca:/certs/ca
+      - docker-certs-client:/certs/client
+      - jenkins-data:/var/jenkins_home
+# Jenkins service
+  jenkins:
+    image: jenkins/jenkins:lts-jdk11 #using official Jenkins LTS image with JDK11
+    container_name: jenkins
+    user: root #running as root user
+    depends_on:
+      - dind #ensuring dind service starts before jenkins
+    networks:
+      - jenkins #connecting to jenkins network
+    ports:
+      - 8081:8080 #mapping host port 8081 to container port 8080
+      - 50000:50000 #port mapping for jenkins agent communication
+    environment:
+      DOCKER_HOST: tcp://docker:2376 #pointing jenkins to docker daemon in dind service
+      DOCKER_CERT_PATH: /certs/client
+      DOCKER_TLS_VERIFY: 1
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - docker-certs-client:/certs/client:ro
+      - /usr/bin/docker:/usr/bin/docker #mounting docker binary from host to container
+
+networks:
+  jenkins:
+    name: jenkins #by default bridge network will be used for communication btw services
+
+volumes:
+  docker-certs-ca: {} #volume used by dind service to manage TLS certificates
+  docker-certs-client: {} #volume that stores client side certificates for secure communication with docker daemon, this volume is shared btw dind and jenkins
+  jenkins-data: {} #volume for persisting jenkins data
